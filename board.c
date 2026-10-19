@@ -1,60 +1,64 @@
+/*
+ * board.c - Othello board representation, move validation and display.
+ */
 #include <stdio.h>
 #include <string.h>
-#include <stdlib.h>
-#include "aiplayer_1155184202.h"
-#include "othello.h"
+#include "board.h"
 
-int directions[8] = {-11, -10, -9, -1, 1, 9, 10, 11};
+const int DIRECTIONS[NUM_DIRECTIONS] = {-11, -10, -9, -1, 1, 9, 10, 11};
 
-void initialize_board(int board[])
+void board_init(int board[])
 {
     int i;
 
-    for(i = 0; i < 10; i++)
-        board[i] = 3;
-    
-    for(; i < 90; i += 10)
-    {
-        board[i] = 3;
-        board[i+9] = 3;
-    }
-    
-    for(; i < 100; i++)
-        board[i] = 3;
+    /* Top border row. */
+    for (i = 0; i < 10; i++)
+        board[i] = BORDER;
 
-    board[44] = 2;
-    board[45] = 1;
-    board[54] = 1;
-    board[55] = 2;
+    /* Left and right border columns. */
+    for (; i < 90; i += 10)
+    {
+        board[i] = BORDER;
+        board[i + 9] = BORDER;
+    }
+
+    /* Bottom border row. */
+    for (; i < BOARD_CELLS; i++)
+        board[i] = BORDER;
+
+    /* Standard starting position. */
+    board[44] = WHITE;
+    board[45] = BLACK;
+    board[54] = BLACK;
+    board[55] = WHITE;
 }
 
-int count_pieces(int board[], int player)
+int board_count_discs(const int board[], int player)
 {
     int count = 0;
 
-    for(int i = 11; i < 89; i++)
-        if(board[i] == player)
+    for (int i = FIRST_SQUARE; i <= LAST_SQUARE; i++)
+        if (board[i] == player)
             count++;
 
-    return count++;
+    return count;
 }
 
-void display_board(int board[])
+void board_print(const int board[])
 {
-    int i, j;
+    int black_discs = board_count_discs(board, BLACK);
+    int white_discs = board_count_discs(board, WHITE);
 
-    int black = count_pieces(board, 1);
-    int white = count_pieces(board, 2);
-
-    printf("   1 2 3 4 5 6 7 8 [#=%d O=%d]\n", black, white);
-    for(i = 1; i < 9; i++)
+    printf("   1 2 3 4 5 6 7 8 [#=%d O=%d]\n", black_discs, white_discs);
+    for (int row = 1; row <= 8; row++)
     {
-        printf("%d  ", i);
-        for(j = 1; j < 9; j++)
+        printf("%d  ", row);
+        for (int col = 1; col <= 8; col++)
         {
-            if(board[10*i+j] == 0)
+            int cell = board[10 * row + col];
+            if (cell == EMPTY)
                 printf(". ");
-            else if(board[10*i+j] == 1)
+            else if (cell == BLACK)
                 printf("# ");
             else
                 printf("O ");
@@ -63,101 +67,74 @@ void display_board(int board[])
     }
 }
 
-int human_player_1155184202(int player, const int *board)
+int human_choose_move(int player, const int *board)
 {
-    int pos;
-    scanf("%d", &pos);
-    return pos;
+    (void)player;
+    (void)board;
+
+    int move = 0;
+    if (scanf("%d", &move) != 1)
+        return -1;   /* end of input or non-numeric input */
+    return move;
 }
 
-int check_validity(int board[], int pos, int player, int direction)
+int board_is_valid_direction(const int board[], int pos, int player, int direction)
 {
-    if(board[pos] == 0 && pos > 10 && pos < 89)
-    {
-        int opponent;
-        if(player == 1)
-            opponent = 2;
-        else
-            opponent = 1;
-
-        int moving_pos = pos;
-
-        if(board[pos+direction] == opponent)
-        {
-            moving_pos += 2*direction;
-            while((moving_pos > 10) && (moving_pos < 89) && (board[moving_pos] != 0) && (moving_pos % 10 != 9) && (moving_pos % 10 != 0))
-            {
-                if(board[moving_pos] == player)
-                    return 1;
-                moving_pos += direction;
-            }
-        }
-        
-        else
-            return 0;
-    }
-
-    else
-        return 0;
-    
-    return 0;
-}
-
-int can_place(int board[], int player)
-{
-    for(int i = 11; i < 89; i++)
-    {
-        for(int j = 0; j < 8; j++)
-        {
-            if(check_validity(board, i, player, directions[j]))
-                return 1;
-        }
-    }
-
-    return 0;
-}
-
-int check_ending(int board[])
-{
-    if(can_place(board, 1) || can_place(board, 2))
-        return 1;
-
-    else
+    if (pos < FIRST_SQUARE || pos > LAST_SQUARE || board[pos] != EMPTY)
         return 0;
 
-    for(int i = 11; i < 89; i++)
+    int opponent = (player == BLACK) ? WHITE : BLACK;
+
+    /* The neighbouring square must hold an opponent disc... */
+    if (board[pos + direction] != opponent)
+        return 0;
+
+    /* ...followed by more opponent discs and then one of the player's own. */
+    int cursor = pos + 2 * direction;
+    while (cursor >= FIRST_SQUARE && cursor <= LAST_SQUARE && board[cursor] != EMPTY
+           && cursor % 10 != 9 && cursor % 10 != 0)
     {
-        if(board[i] == 0)
+        if (board[cursor] == player)
             return 1;
+        cursor += direction;
     }
 
     return 0;
 }
 
-void replace_discs(int board[], int player, int pos, int direction[])
+int board_has_legal_move(const int board[], int player)
 {
-    int tmp_board[100];
-    memcpy(tmp_board, board, 400);
+    for (int pos = FIRST_SQUARE; pos <= LAST_SQUARE; pos++)
+        for (int d = 0; d < NUM_DIRECTIONS; d++)
+            if (board_is_valid_direction(board, pos, player, DIRECTIONS[d]))
+                return 1;
+
+    return 0;
+}
+
+int board_game_in_progress(const int board[])
+{
+    return board_has_legal_move(board, BLACK) || board_has_legal_move(board, WHITE);
+}
+
+void board_apply_move(int board[], int player, int pos, const int directions[])
+{
+    int before[BOARD_CELLS];
+    memcpy(before, board, sizeof before);
 
     board[pos] = player;
 
-    for(int i = 0; i < 8; i++)
+    for (int d = 0; d < NUM_DIRECTIONS; d++)
     {
-        if(check_validity(tmp_board, pos, player, direction[i]))
+        if (!board_is_valid_direction(before, pos, player, directions[d]))
+            continue;
+
+        int cursor = pos + directions[d];
+        while (cursor >= FIRST_SQUARE && cursor <= LAST_SQUARE
+               && before[cursor] != player && before[cursor] != EMPTY)
         {
-            int moving_pos = pos + direction[i];
-
-            while(moving_pos > 10 && moving_pos < 89)
-            {
-                if(tmp_board[moving_pos] != player && tmp_board[moving_pos] != 0)
-                {
-                    board[moving_pos] = player;
-                    moving_pos += direction[i];
-                }
-
-                else
-                    break;
-            }
+            board[cursor] = player;
+            cursor += directions[d];
         }
     }
 }

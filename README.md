@@ -1,42 +1,49 @@
 # Othello AI in C
 
-A terminal Othello (Reversi) game in C with computer opponents built from game-tree search: minimax with alpha-beta pruning, plus positional heuristics.
+A terminal Othello (Reversi) game in C, with a computer opponent that uses minimax search with alpha-beta pruning and positional rules.
 
-> Course project for **ESTR1002 Problem Solving by Programming**, The Chinese University of Hong Kong (Nov 2022).
-
-<!-- TODO before publishing: commit the alpha-beta AI source (aiplayer_*.c/.h, which othello.c includes) so the repo builds. Drop or replace the third-party opponent (aiplayer_1155179480) used in mode 3. -->
-
-## Game engine
-- **Board:** a 10×10 array with a sentinel border. Playable squares are indices 11–88 (row × 10 + column), so neighbour lookups use 8 fixed offsets (±1, ±9, ±10, ±11) with no bounds checks inside the board.
-- **Rules:** move validation in all 8 directions, disc flipping, pass detection when a player has no legal move, game-over detection and final scoring (`board.c`).
-- **Modes** (`othello.c`, chosen at start):
-  1. Human vs human
-  2. Human vs AI (colour assigned at random)
-  3. AI vs AI, for benchmarking two engines against each other
-
-## AI strategies
-I iterated through increasingly strong players:
-
-| Version | Strategy |
-|---|---|
-| Greedy | Pick the move that flips the most discs |
-| Corner-first heuristic | Static square priorities: take corners first, then edge "A/B" squares, prefer the central 4×4 region, and avoid "X-squares" (diagonally next to corners) that give the opponent a corner |
-| Minimax | Depth-limited search (depth 6) over legal moves, with disc count as the leaf evaluation |
-| **Minimax + alpha-beta pruning** | Same search with alpha-beta cut-offs, so deeper lookahead fits within the move time limit |
-| Endgame solver | With fewer than 6 empty squares left, search to the end of the game for an exact result |
-
-`aiplayer_1155184202_2.c` contains the heuristic + depth-limited lookahead player.
+> Originally a course project for **ESTR1002 Problem Solving by Programming**, The Chinese University of Hong Kong (2022). Refactored for readability.
 
 ## Build and play
 
 ```bash
-gcc -O2 -o othello othello.c board.c aiplayer_*.c
-./othello      # then enter mode: 1, 2 or 3
+gcc -std=c99 -Wall -Wextra -O2 -o othello main.c board.c ai_player.c
+./othello
 ```
 
-Enter moves as a two-digit board index: row then column, e.g. `34` = row 3, column 4.
+Enter a game mode:
+- `1`: human vs human
+- `2`: human vs computer (colours assigned at random; black moves first)
 
-## What I'd do next
-- Replace disc-count evaluation with mobility + stability + positional weights
-- Add move ordering and iterative deepening to get more out of alpha-beta
-- Add bitboard representation for speed
+Enter moves as a two-digit board index, row then column. For example, `34` means row 3, column 4.
+
+## Code structure
+
+| File | Contents |
+|---|---|
+| `board.h` / `board.c` | Board representation, move validation, disc flipping, display, human input |
+| `ai_player.h` / `ai_player.c` | Computer opponent: move generation, positional rules, alpha-beta search |
+| `main.c` | Game loop and game modes |
+
+**Board representation:** a 10×10 array with a one-cell border around the 8×8 playing area. Square (row, col) is stored at index `10*row + col`, so playable squares are indices 11–88. Neighbouring squares are fixed offsets (±1, ±9, ±10, ±11), so the code can walk in any direction without bounds checks.
+
+## How the AI chooses a move
+
+1. **Corners first.** It takes a corner whenever one is legal, because a corner disc can never be flipped.
+2. **Search.** Otherwise it runs an 8-ply minimax search with alpha-beta pruning. Each move is made and then undone in place, using a list of the flipped discs, so the board is never copied inside the search.
+3. **Two-phase evaluation.**
+   - **Opening and middlegame** (fewer than 30 discs on the board): the AI *minimises* its own disc count. This is the "evaporation" strategy: holding fewer discs early keeps the AI's mobility high and the opponent's low. On its own turn, the AI searches edge A- and B-squares first.
+   - **Late game:** the AI *maximises* its own disc count.
+4. **Positional rules inside the search.**
+   - The AI avoids **X-squares** (diagonally next to a corner) unless it has no other move, because they give the opponent the corner.
+   - It plays a **C-square** (on the edge, next to a corner) only if the edge then holds no opponent disc and at least five of its own.
+   - A line where either side takes a corner is scored immediately as best or worst, without searching further.
+
+## Known limitations
+- The search has no move ordering, and it lists a move once per capturing direction. In some busy late-middlegame positions, an 8-ply search can take up to about a minute.
+
+## Possible improvements
+- Replace the disc-count evaluation with a weighted mix of mobility, stability and positional value.
+- Add move ordering and iterative deepening, so alpha-beta prunes more and the search can go deeper in the same time.
+- Handle passes inside the search, and generate each legal move once instead of once per capturing direction.
+- Use a bitboard representation for speed.
